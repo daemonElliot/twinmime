@@ -1,0 +1,231 @@
+@page
+@model TwinMIME.Pages.BlogModel
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@{
+    ViewData["Title"] = "Блог о AT&T синтаксисе";
+    var token = Antiforgery.GetAndStoreTokens(HttpContext).RequestToken;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/site.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">    
+<style>
+        .blog-section {
+            padding-top: 70px; 
+        }
+        .katex-formula { margin: 1em 0; text-align: center; }
+
+        .language-python {
+            display: block;
+            background: #e3e1f8ff;   
+            color: #000000ff;           
+            padding: 12px;         
+            border-radius: 30px;   
+            font-size: 18px;       
+            line-height: 1.5;
+            overflow-x: auto;      
+        }
+        .math {
+            background: #ffffffff;
+            padding: 10px 15px;
+            margin: 20px 0;
+            border-radius: 6px;
+        }
+    </style>
+}
+
+<nav class="navbar">
+    <div class="nav-container">
+        <div class="nav-logo">
+            <a href="/">TwinMIME</a>
+        </div>
+        <div class="theme-switcher">
+            <span class="theme-label">Светлая</span>
+            <label class="switch">
+                <input type="checkbox" id="theme-toggle">
+                <span class="slider round"></span>
+            </label>
+            <span class="theme-label">Тёмная</span>
+        </div>
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <div class="user-menu">
+                <a href="/Account" class="nav-link">Yadro</a>
+            </div>
+        }
+    </div>
+</nav>
+
+<input type="hidden" id="__RequestVerificationToken" name="__RequestVerificationToken" value="@token" />
+
+<section class="blog-section">
+    <div class="blog-container">
+        <article class="blog-article">
+            <h1>Про особенности виртуальной памяти</h1>
+            <p class="blog-date">Опубликовано: 11 сентября 2025</p>
+            <div class="blog-content">
+                <p>Относительность в виртуальном адресном пространстве и реализация индексной адресаци в AT&T.<br></br>
+
+Индексная адресация позволяет вычислять эффективный адрес (итоговый, линейный адрес), используя базовый и индексный регистр + смещение.<br></br>
+
+Смещение, задаваемое константой, позволяет точно адресовать поля структур: например, 8(%rbx, %rcx, 4) вычисляет адрес элемента по адресу %rbx + 8 + %rcx * 4, что соответствует доступу к массиву целых чисел (4 байта).<br></br>
+%rbx указывает на начало структуры, а +8 задает смещение на нужное поле внутри этой структуры.<br></br>
+
+Сегментные префиксы, вроде %fs:0x0(%rax), добавляют ещё один уровень косвенности, обращаясь к памяти через сегментные регистры, что активно используется в современных ОС для доступа к TLS (Thread-Local Storage) или системным структурам.</p>
+            <div class="math">
+                <p><b>Тест Katex и Highlight.js</b></p>
+                <p>
+                $$
+                \min_{\theta,\phi}\; \mathcal{L}(\theta,\phi)
+                = \frac{1}{|\Omega|}\sum_{p\in\Omega}\mathcal{L}_{\mathrm{CE}}(u(p),y(p))
+                + \lambda_{\mathrm{TV}} \,\mathcal{R}_{\mathrm{TV}}(u)
+                + \lambda_{\theta}\,\|\theta\|_2^2
+                + \lambda_{\phi}\,\mathcal{R}_{\phi}(\phi),
+                $$
+                </p>
+
+                <ul>
+                    <li>Cross-entropy:
+                    $$
+                    \mathcal{L}_{\mathrm{CE}}(u,y) = -\sum_{k=1}^K y_k \log u_k
+                    $$
+                    </li>
+                    <li>Weight decay:
+                    $$
+                    \|\theta\|_2^2 = \sum_i \theta_i^2
+                    $$
+                    </li>
+                    <li>Total Variation (границы):
+                    $$
+                    \mathcal{R}_{\mathrm{TV}}(u) = \frac{1}{|\Omega|}\sum_{p\in\Omega}\sum_{k=1}^K
+                    \sqrt{ (\nabla_x u_k(p))^2 + (\nabla_y u_k(p))^2 + \varepsilon }
+                    $$
+                    </li>
+                </ul>
+</div>
+<pre><code class="language-python">
+import torch
+import torch.nn.functional as F
+
+def ce_loss(logits, target):
+    return F.cross_entropy(logits, target)
+
+def tv_loss(prob):
+    dx = prob[:, :, :, 1:] - prob[:, :, :, :-1]
+    dy = prob[:, :, 1:, :] - prob[:, :, :-1, :]
+    return torch.mean(torch.sqrt(dx[:, :, :, :-1]**2 + dy[:, :, :-1, :]**2 + 1e-6))
+
+def total_loss(logits, target, model, lambda_tv=1e-3, lambda_wd=1e-4):
+    prob = F.softmax(logits, dim=1)
+    loss = ce_loss(logits, target)
+    loss += lambda_tv * tv_loss(prob)
+    loss += lambda_wd * sum(torch.sum(p**2) for p in model.parameters())
+    return loss
+
+def natural_gradient_step(model, loss, lr=1e-3, damping=1e-3):
+    grads = torch.autograd.grad(loss, model.parameters(), create_graph=True)
+    fisher_diag = [g.detach()**2 + damping for g in grads]
+    with torch.no_grad():
+        for p, g, f in zip(model.parameters(), grads, fisher_diag):
+            p -= lr * g / f.sqrt()
+</code></pre>
+
+    </div>
+            </div>
+            
+            <div class="article-reactions">
+                <button class="reaction-btn" onclick="rateArticle(true)">
+                    <span class="emoji">👍</span>
+                    <span class="count" id="likeCount">@Model.LikeCount</span>
+                </button>
+                <button class="reaction-btn" onclick="rateArticle(false)">
+                    <span class="emoji">👎</span>
+                    <span class="count" id="dislikeCount">@Model.DislikeCount</span>
+                </button>
+            </div>
+        </article>
+
+        <div class="comments-section">
+            <h2>Комментарии</h2>
+            
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <form class="comment-form" method="post" asp-page-handler="AddComment">
+                    @Html.AntiForgeryToken()
+                    <textarea name="commentText" placeholder="Оставьте ваш комментарий..." required></textarea>
+                    <button type="submit" class="cta-button-small">Отправить</button>
+                </form>
+            }
+            else
+            {
+                <p class="auth-required">Чтобы оставить комментарий, <a href="/">войдите в систему</a>.</p>
+            }
+
+            <div class="comments-list">
+                @if (Model.Comments != null && Model.Comments.Any())
+                {
+                    @foreach (var comment in Model.Comments)
+                    {
+                        <div class="comment">
+                            <div class="comment-header">
+                                <span class="comment-author">@comment.Author</span>
+                                <span class="comment-date">@comment.CreatedDate.ToString("dd.MM.yyyy HH:mm")</span>
+                            </div>
+                            <div class="comment-text">
+                                @comment.Text
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p>Пока нет комментариев. Будьте первым!</p>
+                }
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ]
+            });
+        });
+
+    function rateArticle(isLike) {
+        if (!@(User.Identity?.IsAuthenticated == true ? "true" : "false")) {
+            alert('Для оценки статьи необходимо войти в систему');
+            return;
+        }
+
+        fetch('?handler=RateArticle', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+            },
+            body: JSON.stringify({ isLike: isLike })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+            } else {
+                document.getElementById('likeCount').textContent = data.likeCount;
+                document.getElementById('dislikeCount').textContent = data.dislikeCount;
+            }
+        })
+        .catch(error => console.error('Ошибка:', error));
+    }
+    </script>
+}

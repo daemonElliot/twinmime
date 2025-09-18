@@ -1,0 +1,14 @@
+@page
+@model AccountModel
+@{
+    ViewData["Title"] = "Личный кабинет";
+}
+
+<div class="account-container">
+    <h2>Личный кабинет</h2>
+    <div class="account-info">
+        <p><strong>Имя пользователя:</strong> @Model.Username</p>
+        <p><strong>Отображаемое имя:</strong> @Model.DisplayName</p>
+        <p><strong>Рейтинг:</strong> <span class="rating-value">@Model.Rating</span></p>
+    </div>
+</div>
